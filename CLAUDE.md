@@ -62,8 +62,8 @@ cd worker && npx wrangler dev                      # local worker; npx wrangler 
 Run `/setup` to walk through first-time deployment. Steps that need Sono's accounts (GitHub login,
 Cloudflare login, TRMNL web app) must be handed to her; don't fake them. Track progress here:
 
-- [ ] GitHub repo created and pushed (Pages requires a public repo on the free plan)
-- [ ] Pages source set to GitHub Actions, first `render` run green, `<SITE_URL>/manifest.json` reachable
+- [x] GitHub repo created and pushed (Pages requires a public repo on the free plan) -> github.com/vjra/trmnl_gol
+- [x] Pages source set to GitHub Actions, first `render` run green, `<SITE_URL>/manifest.json` reachable -> https://vjra.github.io/trmnl_gol/
 - [ ] `worker/wrangler.toml` SITE_URL set, Worker deployed, `curl <worker-url>` returns valid JSON
 - [ ] TRMNL: Redirect plugin added with the Worker URL, placed in playlist, device refresh set
 - [ ] Watched it change on the device for 10 minutes

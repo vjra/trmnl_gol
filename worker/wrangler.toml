@@ -4,7 +4,7 @@ compatibility_date = "2026-09-01"
 
 [vars]
 # Where GitHub Pages serves site/ (manifest.json + frames/). Set before deploying.
-SITE_URL = "https://YOUR_GITHUB_USER.github.io/lenia-trmnl"
+SITE_URL = "https://vjra.github.io/trmnl_gol"
 TZ = "Europe/Vienna"
 # Device sleeps through these local hours (saves battery). "" disables.
 QUIET_HOURS = "23-7"
