@@ -5,13 +5,16 @@
 
 const pad = (i) => String(i).padStart(4, "0");
 
-/** Local hour/minute/second in a time zone. */
+/** Local hour/minute/second/weekday in a time zone (weekday must come from the same zone, not UTC). */
 export function localTime(nowMs, tz) {
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", weekday: "short",
   }).formatToParts(new Date(nowMs));
   const get = (t) => Number(parts.find((p) => p.type === t).value);
-  return { h: get("hour"), m: get("minute"), s: get("second") };
+  return {
+    h: get("hour"), m: get("minute"), s: get("second"),
+    weekday: parts.find((p) => p.type === "weekday").value,
+  };
 }
 
 /** Seconds until quiet hours end, or 0 if we're not in quiet hours. quiet = "23-7" or "". */
@@ -25,13 +28,35 @@ export function quietSeconds(nowMs, tz, quiet) {
   return Math.max(60, hoursLeft * 3600 - m * 60 - s);
 }
 
+const WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri"]);
+
+/**
+ * Seconds to sleep for a reduced-frequency weekday window (e.g. office hours), or 0 outside it.
+ * Weekends are never affected. Clamped to the window end, so a poll near the edge doesn't
+ * oversleep past it. hours = "10-17", refresh = desired sleep in seconds (e.g. 1800).
+ */
+export function workSeconds(nowMs, tz, hours, refresh) {
+  if (!hours || !refresh) return 0;
+  const [start, end] = hours.split("-").map(Number);
+  const { h, m, s, weekday } = localTime(nowMs, tz);
+  if (!WEEKDAYS.has(weekday)) return 0;
+  const inWindow = start > end ? h >= start || h < end : h >= start && h < end;
+  if (!inWindow) return 0;
+  const hoursLeft = (end - h + 24) % 24;
+  const secondsUntilEnd = hoursLeft * 3600 - m * 60 - s;
+  return Math.max(60, Math.min(Number(refresh), secondsUntilEnd));
+}
+
 /** Pure frame selection, unit-tested in test/index.test.mjs. */
 export function pick(manifest, nowMs, env = {}) {
   const { n, interval, start, build, path } = manifest;
   const k = Math.floor((nowMs / 1000 - start) / interval);
   const idx = ((k % n) + n) % n;                   // loop forever if a daily build fails
   const base = (env.SITE_URL || "").replace(/\/$/, "");
-  const sleep = quietSeconds(nowMs, env.TZ || "UTC", env.QUIET_HOURS || "");
+  const tz = env.TZ || "UTC";
+  const quiet = quietSeconds(nowMs, tz, env.QUIET_HOURS || "");
+  const work = workSeconds(nowMs, tz, env.WORK_HOURS || "", env.WORK_REFRESH || "");
+  const sleep = quiet || work;                     // night quiet takes precedence (windows don't overlap)
   return {
     filename: `lenia-${build}-${pad(idx)}`,
     url: `${base}/${path}/${pad(idx)}.png`,

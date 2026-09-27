@@ -8,3 +8,6 @@ SITE_URL = "https://vjra.github.io/trmnl_gol"
 TZ = "Europe/Vienna"
 # Device sleeps through these local hours (saves battery). "" disables.
 QUIET_HOURS = "23-7"
+# Weekdays only (Mon-Fri), reduced update frequency instead of full sleep. "" disables.
+WORK_HOURS = "10-17"
+WORK_REFRESH = "1800"

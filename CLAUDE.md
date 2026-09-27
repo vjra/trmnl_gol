@@ -16,6 +16,8 @@ python lenia_trmnl.py render-day  -->  site/manifest.json   <----  GET manifest 
 - Simulation is deterministic, so everything is pre-rendered. No live server.
 - Frame index = `floor((now - manifest.start) / interval) % n`, so the loop keeps playing if a daily build fails.
 - Quiet hours (default 23-7 Europe/Vienna) are handled in the Worker by returning a long `refresh_rate`.
+- Weekday office hours (default 10-17, Mon-Fri) get a reduced-frequency `refresh_rate` (default 1800 s)
+  instead of full sleep; night quiet takes precedence if the windows ever overlap.
 
 ## Code map
 
