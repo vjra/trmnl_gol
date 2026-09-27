@@ -39,9 +39,10 @@ jobs:
       - run: pip install -r requirements.txt
       # input goes through env, never straight into the shell script (no expression injection).
       # --keep-previous ships the live build's frames too, so cached old manifests never hit a 404.
+      # --device x: the deployed hardware is a TRMNL X (1872x1404, 4-bit), not the OG default.
       - run: |
           live="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
-          python lenia_trmnl.py render-day --n "$N" --outdir site --keep-previous "$live"
+          python lenia_trmnl.py render-day --n "$N" --device x --outdir site --keep-previous "$live"
         env:
           N: ${{ inputs.n || 1440 }}
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1

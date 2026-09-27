@@ -53,6 +53,17 @@ def test_render_day_writes_frames_and_manifest(tmp_path):
     assert frames[0].stat().st_size < 90_000   # firmware rejects large images
 
 
+def test_render_day_supports_trmnl_x_resolution(tmp_path):
+    out = tmp_path / "site"
+    subprocess.run([sys.executable, str(ROOT / "lenia_trmnl.py"), "render-day", "--n", "2",
+                    "--steps", "10", "--device", "x", "--species", str(ROOT / "species.json"),
+                    "--outdir", str(out), "--build", "test"], check=True)
+    frame = out / "frames" / "test" / "0000.png"
+    im = Image.open(frame)
+    assert im.size == (1872, 1404) and im.mode == "P" and len(im.getpalette()) == 3 * 16
+    assert frame.stat().st_size < 200_000   # no confirmed firmware limit for X; generous sanity bound
+
+
 @contextlib.contextmanager
 def serve(root: Path):
     """Static HTTP server on a free localhost port, standing in for the live Pages site."""

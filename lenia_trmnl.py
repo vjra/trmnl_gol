@@ -12,7 +12,7 @@ Subcommands
     search    find original species: harvest solitons from random multi-ring soups,
               then a MAP-Elites walk through rule space (seeded with Orbium),
               binned by speed / size / pulsing / ring count, long-run verified
-    examples  overview plot + TRMNL-ready 800x480 1-bit PNGs (+ optional GIF preview)
+    examples  overview plot + TRMNL-ready PNGs (+ optional GIF preview)
     init      start a persistent world for the display (state in world.npz)
     render-day  pre-render a loop of frames + manifest.json for static hosting
               (GitHub Pages + Cloudflare Worker + TRMNL Redirect plugin, 1 frame/min)
@@ -24,9 +24,10 @@ Quickstart
     pip install numpy pillow scipy matplotlib requests
     python lenia_trmnl.py search --soup 300 --n 1500      # ~3-4 min on one core -> species.json
     python lenia_trmnl.py examples --gif                   # -> examples/
-    python lenia_trmnl.py render-day --n 1440 --outdir site   # ~3 min, ~18 MB
+    python lenia_trmnl.py render-day --n 1440 --outdir site --device og   # ~3 min, ~18 MB
 
-TRMNL OG: 800x480, 1-bit PNG is the safe format (2-bit via --levels 4 is experimental).
+--device selects the target display: "og" (800x480, 1-bit, the default) or "x" (1872x1404,
+4-bit / 16 greys). init and tick must use the same --device (the world's grid shape depends on it).
 Webhook Image plugin accepts PNG/JPEG/BMP up to 5 MB, max 12 uploads per hour.
 """
 from __future__ import annotations
@@ -419,11 +420,25 @@ def load_species(path) -> list[tuple[Rule, np.ndarray]]:
 
 
 # --------------------------------------------------------------------------
-# E-ink rendering (800x480, 1-bit or 2-bit)
+# E-ink rendering (device-dependent size and bit depth)
 # --------------------------------------------------------------------------
 
-W, H = 800, 480
-FOOTER = 28
+# OG: 800x480, 1-bit. X: 1872x1404, 4-bit (16 greys). See docs/trmnl-notes.md.
+# X's default --scale is coarser than OG's: at the same scale, X's ~4x pixel area makes render-day's
+# 1440-frame loop take longer than the CI job's 30 min budget (measured ~38 min at scale=3, ~13 at 6).
+DEVICES = {
+    "og": {"w": 800, "h": 480, "footer": 28, "font": 14, "levels": 2, "scale": 3},
+    "x": {"w": 1872, "h": 1404, "footer": 56, "font": 32, "levels": 16, "scale": 6},
+}
+
+W, H, FOOTER, FONT_SIZE = (DEVICES["og"][k] for k in ("w", "h", "footer", "font"))
+
+
+def set_device(name: str) -> None:
+    """Switch the module-level canvas size/footer/font to the named device. Call before rendering."""
+    global W, H, FOOTER, FONT_SIZE
+    d = DEVICES[name]
+    W, H, FOOTER, FONT_SIZE = d["w"], d["h"], d["footer"], d["font"]
 
 
 def upscale(A: np.ndarray, size) -> np.ndarray:
@@ -440,15 +455,24 @@ def contours(F: np.ndarray, levels=7) -> np.ndarray:
     return e
 
 
+def grey_palette(levels: int) -> Image.Image:
+    """
+    An evenly-spaced grey ramp as a PIL palette, e.g. 16 levels -> a true 4-bit-depth PNG.
+    Unpadded: PIL sizes the saved PNG's bit depth off the palette's actual length, so
+    padding to the usual 256-entry buffer would silently force 8-bit output.
+    """
+    pal = Image.new("P", (1, 1))
+    g = [int(255 * i / (levels - 1)) for i in range(levels)]
+    pal.putpalette(sum(([v, v, v] for v in g), []))
+    return pal
+
+
 def floyd(F: np.ndarray, levels=2) -> np.ndarray:
-    """Floyd-Steinberg via PIL (fast). levels=2 -> 1-bit, 4 -> 2-bit."""
+    """Floyd-Steinberg via PIL (fast). levels=2 -> 1-bit, 4/16 -> 2/4-bit."""
     im = Image.fromarray((np.clip(F, 0, 1) * 255).astype(np.uint8), "L")
     if levels == 2:
         return np.asarray(im.convert("1"), float)
-    pal = Image.new("P", (1, 1))
-    g = [int(255 * i / (levels - 1)) for i in range(levels)]
-    pal.putpalette(sum(([v, v, v] for v in g), []) + [0] * (768 - 3 * levels))
-    q = im.convert("RGB").quantize(palette=pal, dither=Image.Dither.FLOYDSTEINBERG)
+    q = im.convert("RGB").quantize(palette=grey_palette(levels), dither=Image.Dither.FLOYDSTEINBERG)
     return np.asarray(q, float) / (levels - 1)
 
 
@@ -494,13 +518,14 @@ def render(A: np.ndarray, style="xray", ghosts=None, trail=None,
     d = ImageDraw.Draw(canvas)
     d.line([(0, fh), (W, fh)], fill=0, width=1)
     try:
-        font = ImageFont.truetype("DejaVuSansMono.ttf", 14)
+        font = ImageFont.truetype("DejaVuSansMono.ttf", FONT_SIZE)
     except OSError:
         font = ImageFont.load_default()
-    d.text((10, fh + 6), label, fill=0, font=font)
+    d.text((10, fh + FONT_SIZE // 2), label, fill=0, font=font)
     if levels == 2:
         return canvas.convert("1", dither=Image.Dither.NONE)
-    return canvas
+    # exact match to the palette already used above (footer is pure black/white too): no dithering
+    return canvas.convert("RGB").quantize(palette=grey_palette(levels), dither=Image.Dither.NONE)
 
 
 # --------------------------------------------------------------------------
@@ -606,7 +631,7 @@ def cmd_examples(args):
         advance(wd, 20 * rule.T)                      # settle
         ghosts, trail = advance(wd, args.steps)
         style = args.style
-        render(wd.A, style, ghosts, trail, label_for(rule, wd.t * rule.dt)).save(
+        render(wd.A, style, ghosts, trail, label_for(rule, wd.t * rule.dt), args.levels).save(
             out / f"trmnl_{rule.name.lower()}_{style}.png")
         print("wrote", out / f"trmnl_{rule.name.lower()}_{style}.png")
 
@@ -616,15 +641,16 @@ def cmd_examples(args):
     advance(wd, 20 * rule.T)
     ghosts, trail = advance(wd, args.steps)
     for style in ("ink", "contour", "xray", "strobe"):
-        render(wd.A, style, ghosts, trail, label_for(rule, wd.t * rule.dt) + f"   [{style}]").save(
-            out / f"style_{style}.png")
+        render(wd.A, style, ghosts, trail, label_for(rule, wd.t * rule.dt) + f"   [{style}]",
+               args.levels).save(out / f"style_{style}.png")
 
     # 4) full-screen soup of Hydrogeminium natans
     hg = KNOWN["hydrogeminium"]
     wd = World(hg, wshape, seed_soup(wshape, rng, 6, int(hg.R * 2.2)))
     advance(wd, 60)
     ghosts, trail = advance(wd, 40)
-    render(wd.A, "ink", ghosts, trail, label_for(hg, wd.t * hg.dt)).save(out / "trmnl_hydrogeminium_ink.png")
+    render(wd.A, "ink", ghosts, trail, label_for(hg, wd.t * hg.dt), args.levels).save(
+        out / "trmnl_hydrogeminium_ink.png")
 
     # 5) animated preview of what the display would show over ~1 hour (12 refreshes)
     if args.gif:
@@ -886,6 +912,7 @@ def main():
     s.add_argument("--prefix", default="Sono", help="name prefix for discovered species")
 
     e = sub.add_parser("examples"); e.set_defaults(fn=cmd_examples)
+    e.add_argument("--device", default="og", choices=list(DEVICES), help="target display, sets size and grey levels")
     e.add_argument("--species", default="species.json")
     e.add_argument("--max-species", type=int, default=4)
     e.add_argument("--outdir", default="examples")
@@ -893,11 +920,13 @@ def main():
     e.add_argument("--count", type=int, default=3, help="creatures per screen")
     e.add_argument("--steps", type=int, default=120, help="sim steps between refreshes")
     e.add_argument("--style", default="strobe", choices=["ink", "contour", "xray", "strobe"])
+    e.add_argument("--levels", type=int, default=None, choices=[2, 4, 16], help="default: 2 on og, 16 on x")
     e.add_argument("--showcase", type=int, default=1, help="species index for style sheet / gif")
     e.add_argument("--gif", action="store_true")
     e.add_argument("--seed", type=int, default=1)
 
     i = sub.add_parser("init"); i.set_defaults(fn=cmd_init)
+    i.add_argument("--device", default="og", choices=list(DEVICES), help="target display, sets size and grey levels")
     i.add_argument("--start", type=int, default=0, help="species index in the rotation (0 = Orbium)")
     i.add_argument("--species", default="species.json")
     i.add_argument("--state", default="world.npz")
@@ -907,14 +936,16 @@ def main():
 
     rd = sub.add_parser("render-day", help="pre-render a frame loop for static hosting")
     rd.set_defaults(fn=cmd_render_day)
+    rd.add_argument("--device", default="og", choices=list(DEVICES), help="target display, sets size and grey levels")
     rd.add_argument("--n", type=int, default=1440, help="frames in the loop (1440 = 1/min for 24 h)")
     rd.add_argument("--interval", type=int, default=60, help="seconds per frame (Redirect minimum is 60)")
     rd.add_argument("--steps", type=int, default=40, help="sim steps per frame")
     rd.add_argument("--epoch", type=int, default=360, help="frames per species before rotating")
     rd.add_argument("--max-occ", type=float, default=0.45)
     rd.add_argument("--style", default="auto", choices=["auto", "ink", "contour", "xray", "strobe"])
-    rd.add_argument("--levels", type=int, default=2, choices=[2, 4])
-    rd.add_argument("--scale", type=int, default=3)
+    rd.add_argument("--levels", type=int, default=None, choices=[2, 4, 16],
+                    help="default: 2 on og, 16 on x")
+    rd.add_argument("--scale", type=int, default=None, help="screen pixels per cell; default: 3 on og, 6 on x")
     rd.add_argument("--count", type=int, default=3)
     rd.add_argument("--start", type=int, default=-1, help="first species index (-1 = rotate by date)")
     rd.add_argument("--seed", type=int, default=None)
@@ -934,6 +965,7 @@ def main():
 
     g = sub.add_parser("gifs", help="one animated preview GIF per species")
     g.set_defaults(fn=cmd_gifs)
+    g.add_argument("--device", default="og", choices=list(DEVICES), help="target display, sets size and grey levels")
     g.add_argument("--species", default="species.json")
     g.add_argument("--names", default="", help="comma-separated subset")
     g.add_argument("--outdir", default="examples/gifs")
@@ -947,6 +979,7 @@ def main():
     g.add_argument("--seed", type=int, default=3)
 
     t = sub.add_parser("tick"); t.set_defaults(fn=cmd_tick)
+    t.add_argument("--device", default="og", choices=list(DEVICES), help="target display, sets size and grey levels")
     t.add_argument("--state", default="world.npz")
     t.add_argument("--steps", type=int, default=120, help="sim steps between screen updates")
     t.add_argument("--species", default="species.json")
@@ -954,11 +987,16 @@ def main():
     t.add_argument("--style", default="auto", choices=["auto", "ink", "contour", "xray", "strobe"])
     t.add_argument("--epoch", type=int, default=72, help="refreshes per species (72 x 5 min = 6 h)")
     t.add_argument("--max-occ", type=float, default=0.45, help="overgrowth threshold")
-    t.add_argument("--levels", type=int, default=2, choices=[2, 4])
+    t.add_argument("--levels", type=int, default=None, choices=[2, 4, 16], help="default: 2 on og, 16 on x")
     t.add_argument("--png", default="trmnl.png")
     t.add_argument("--push", default=None, help="TRMNL Webhook Image URL")
 
     a = p.parse_args()
+    if hasattr(a, "device"):
+        set_device(a.device)
+        for opt in ("levels", "scale"):
+            if getattr(a, opt, None) is None and opt in vars(a):
+                setattr(a, opt, DEVICES[a.device][opt])
     a.fn(a)
 
 

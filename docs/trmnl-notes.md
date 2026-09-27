@@ -8,6 +8,13 @@
 - Battery: firmware README estimates ~13,400 refreshes per 2500 mAh charge.
   https://github.com/usetrmnl/trmnl-firmware
 
+## Device (X) - the one actually deployed here
+- 1872x1404, 16 grey levels (4-bit). Resolution per Sono, not yet cross-checked against a TRMNL spec
+  page or the firmware repo above - confirm size/KB-limit/battery figures there before relying on them.
+- Wrong size was the cause of the "small image, rest of the screen blank" bug: we were serving OG-sized
+  (800x480) frames to an X device, which (per TRMNL's own Redirect troubleshooting page) does not scale
+  a mismatched image to fill the screen. `render-day --device x` fixes this; see CLAUDE.md.
+
 ## Ways to get pixels onto it
 | Plugin | How | Fastest | Notes |
 |---|---|---|---|

@@ -6,7 +6,8 @@ Lenia creatures on a TRMNL e-ink display, one frame per minute.
 
 More: `docs/examples/` (overviews, portrait and ecosystem GIFs).
 
-- `lenia_trmnl.py` simulates Lenia, searches for new species and renders 800x480 1-bit frames.
+- `lenia_trmnl.py` simulates Lenia, searches for new species and renders TRMNL-format frames
+  (`--device og` for 800x480 1-bit, `--device x` for 1872x1404 4-bit).
 - A daily GitHub Action renders 24 h of frames to GitHub Pages.
 - A Cloudflare Worker serves TRMNL's Redirect plugin: which frame now, and how long to sleep.
 
