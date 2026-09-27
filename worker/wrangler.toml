@@ -1,6 +1,9 @@
 name = "lenia-trmnl"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
+# Only the stable <name>.<subdomain>.workers.dev URL that TRMNL polls; no per-version preview URLs.
+workers_dev = true
+preview_urls = false
 
 [vars]
 # Where GitHub Pages serves site/ (manifest.json + frames/). Set before deploying.

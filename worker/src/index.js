@@ -4,6 +4,8 @@
 // url must be an 800x480 1-bit PNG/BMP, refresh_rate >= 60 s, response within 2 s.
 
 const pad = (i) => String(i).padStart(4, "0");
+const HEADERS = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
+const SEGMENT = /^[\w-][\w.-]*$/;                  // no leading dot, so no "." / ".." / hidden names
 
 /** Local hour/minute/second/weekday in a time zone (weekday must come from the same zone, not UTC). */
 export function localTime(nowMs, tz) {
@@ -36,7 +38,7 @@ const WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri"]);
  * oversleep past it. hours = "10-17", refresh = desired sleep in seconds (e.g. 1800).
  */
 export function workSeconds(nowMs, tz, hours, refresh) {
-  if (!hours || !refresh) return 0;
+  if (!hours || !(Number(refresh) > 0)) return 0;   // unset or non-numeric: window off, not NaN
   const [start, end] = hours.split("-").map(Number);
   const { h, m, s, weekday } = localTime(nowMs, tz);
   if (!WEEKDAYS.has(weekday)) return 0;
@@ -45,6 +47,16 @@ export function workSeconds(nowMs, tz, hours, refresh) {
   const hoursLeft = (end - h + 24) % 24;
   const secondsUntilEnd = hoursLeft * 3600 - m * 60 - s;
   return Math.max(60, Math.min(Number(refresh), secondsUntilEnd));
+}
+
+/** Manifest shape check: anything else would yield NaN frame indices or odd URLs. */
+export function validManifest(m) {
+  return m !== null && typeof m === "object"
+    && Number.isInteger(m.n) && m.n > 0
+    && Number.isFinite(m.interval) && m.interval > 0
+    && Number.isFinite(m.start)
+    && typeof m.build === "string" && SEGMENT.test(m.build)
+    && typeof m.path === "string" && m.path.split("/").every((p) => SEGMENT.test(p));
 }
 
 /** Pure frame selection, unit-tested in test/index.test.mjs. */
@@ -66,6 +78,13 @@ export function pick(manifest, nowMs, env = {}) {
 
 export default {
   async fetch(request, env) {
+    // TRMNL only ever GETs the root; everything else is scanners, so skip the manifest fetch.
+    if (new URL(request.url).pathname !== "/") {
+      return new Response("not found\n", { status: 404, headers: HEADERS });
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response("method not allowed\n", { status: 405, headers: { ...HEADERS, allow: "GET, HEAD" } });
+    }
     try {
       const res = await fetch(`${env.SITE_URL.replace(/\/$/, "")}/manifest.json`, {
         cf: { cacheTtl: 60, cacheEverything: true },   // short: new builds replace old frames
@@ -73,11 +92,11 @@ export default {
       });
       if (!res.ok) throw new Error(`manifest ${res.status}`);
       const manifest = await res.json();
-      return Response.json(pick(manifest, Date.now(), env), {
-        headers: { "cache-control": "no-store" },
-      });
+      if (!validManifest(manifest)) throw new Error("manifest has unexpected shape");
+      return Response.json(pick(manifest, Date.now(), env), { headers: HEADERS });
     } catch (err) {
-      return Response.json({ error: String(err) }, { status: 502 });
+      console.error(err);                               // detail goes to `wrangler tail`, not the caller
+      return Response.json({ error: "manifest unavailable" }, { status: 502, headers: HEADERS });
     }
   },
 };

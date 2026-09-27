@@ -18,11 +18,13 @@ whenever a step needs my login or the TRMNL web app.
    `cd worker && npx wrangler login` (I do the browser part), `npx wrangler deploy`.
    Curl the worker URL twice a minute apart: filename must change, url must return a PNG, response < 2 s.
    Commit the wrangler.toml change.
-5. TRMNL (manual, give me the steps): Plugins -> Redirect -> paste the Worker URL -> save ->
+5. TRMNL (manual, give me the steps): Plugins -> Redirect -> paste the Worker URL
+   (`https://` root URL exactly: workers.dev also answers plain http, other paths 404) -> save ->
    add it to the playlist (alone, or with duration set) -> device refresh to 1 min.
    Mention the battery trade-off (~9 days at 1/min on 2500 mAh) and TRMNL's own Sleep Mode.
 6. Optional: set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repo secrets so
-   deploy-worker.yml redeploys on changes.
+   deploy-worker.yml redeploys on changes. Token: custom, this account only, "Workers Scripts: Edit",
+   no zone resources, with an expiry. Keep the action SHAs in the workflows pinned.
 
 If anything in TRMNL's behaviour differs from docs/trmnl-notes.md, check their current help pages
 and update the notes.

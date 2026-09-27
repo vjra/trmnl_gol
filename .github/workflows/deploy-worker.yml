@@ -1,5 +1,7 @@
 # Optional: redeploy the Worker when worker/ changes.
-# Needs repo secrets CLOUDFLARE_API_TOKEN (template "Edit Cloudflare Workers") and CLOUDFLARE_ACCOUNT_ID.
+# Needs repo secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Scope the token to this account,
+# permission "Workers Scripts: Edit" only, no zone resources, with an expiry date.
+# Actions are pinned to commit SHAs because this job holds the token; bump the SHA and the comment together.
 name: deploy-worker
 
 on:
@@ -8,22 +10,28 @@ on:
     paths: [worker/**]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
       HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
       - run: node --test worker/test/*.test.mjs
       - if: env.HAS_TOKEN != 'true'
         run: echo "::notice::No CLOUDFLARE_API_TOKEN secret, skipping deploy (use 'npx wrangler deploy' locally)"
       - if: env.HAS_TOKEN == 'true'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
+          wranglerVersion: "4.141.0"
