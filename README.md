@@ -20,3 +20,7 @@ python lenia_trmnl.py render-day --n 20 --outdir site
 ```
 
 Credits: Lenia by Bert Chan (https://github.com/Chakazul/Lenia). Orbium reference pattern from his work.
+
+## License
+
+MIT, see [LICENSE](LICENSE) — free to use, please keep the credit.
