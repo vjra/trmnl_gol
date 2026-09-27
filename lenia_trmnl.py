@@ -940,7 +940,9 @@ def main():
     rd.add_argument("--n", type=int, default=1440, help="frames in the loop (1440 = 1/min for 24 h)")
     rd.add_argument("--interval", type=int, default=60, help="seconds per frame (Redirect minimum is 60)")
     rd.add_argument("--steps", type=int, default=40, help="sim steps per frame")
-    rd.add_argument("--epoch", type=int, default=360, help="frames per species before rotating")
+    rd.add_argument("--epoch", type=int, default=60, help="frames (minutes) per species before rotating; "
+                    "most species reach their steady state within ~10-40, so 360 (6 h) mostly meant "
+                    "hours of an unchanging plateau, not new growth")
     rd.add_argument("--max-occ", type=float, default=0.45)
     rd.add_argument("--style", default="auto", choices=["auto", "ink", "contour", "xray", "strobe"])
     rd.add_argument("--levels", type=int, default=None, choices=[2, 4, 16],
