@@ -2,6 +2,7 @@ __pycache__/
 .pytest_cache/
 /site/
 /examples/
+/local_v1_preview/
 world.npz
 trmnl.png
 worker/node_modules/
