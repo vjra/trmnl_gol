@@ -1,5 +1,10 @@
 # Daily: render a 24 h frame loop and publish it to GitHub Pages.
 # Repo settings -> Pages -> Source: "GitHub Actions" (or: gh api -X POST repos/OWNER/REPO/pages -f build_type=workflow)
+#
+# Deploys are locked to the v1.0.0 branch, not main: main is where ongoing work happens, v1.0.0 is
+# what's actually live. `schedule` always reads this workflow file from the default branch (main),
+# regardless of this file's own `push.branches`, so the checkout step below pins `ref: v1.0.0`
+# explicitly. When you cut the next release branch, update that ref (and this file, on both branches).
 name: render
 
 on:
@@ -12,7 +17,7 @@ on:
         type: number
         default: 1440
   push:
-    branches: [main]
+    branches: [v1.0.0]
     paths: [lenia_trmnl.py, species.json, .github/workflows/render.yml]
 
 permissions:
@@ -31,6 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: v1.0.0
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:

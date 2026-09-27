@@ -2,11 +2,12 @@
 # Needs repo secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. Scope the token to this account,
 # permission "Workers Scripts: Edit" only, no zone resources, with an expiry date.
 # Actions are pinned to commit SHAs because this job holds the token; bump the SHA and the comment together.
+# Deploys are locked to the v1.0.0 branch, not main - see render.yml's header for why.
 name: deploy-worker
 
 on:
   push:
-    branches: [main]
+    branches: [v1.0.0]
     paths: [worker/**]
   workflow_dispatch:
 
@@ -21,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: v1.0.0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:

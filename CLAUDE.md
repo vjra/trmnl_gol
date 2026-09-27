@@ -5,6 +5,13 @@ Owner: Sono (data scientist, fluent in Python/numpy; no need to explain basics).
 The deployed device is a **TRMNL X** (1872x1404, 4-bit/16 greys) -> `render-day --device x` in render.yml.
 `--device og` (800x480, 1-bit, the default) is the original/smaller target; keep both working.
 
+**Releases**: `main` is where ongoing work happens; `v1.0.0` is the branch actually deployed. render.yml
+and deploy-worker.yml trigger only on pushes to `v1.0.0` and pin `actions/checkout`'s `ref: v1.0.0`
+explicitly (the daily `schedule` trigger always reads the workflow file from the default branch, `main`,
+regardless - the explicit `ref:` is what makes it build v1.0.0's code anyway). To ship a change: merge
+it into `v1.0.0` deliberately, don't just push to `main` and expect it live. Next release: branch a new
+tag off `main` (e.g. `v1.1.0`), update the `ref:` in both workflow files, on both branches.
+
 ## Architecture
 
 ```
