@@ -1,0 +1,6 @@
+numpy>=1.26
+pillow>=10
+scipy>=1.11
+matplotlib>=3.8
+requests>=2.31
+pytest>=8

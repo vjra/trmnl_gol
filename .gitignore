@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+/site/
+/examples/
+world.npz
+trmnl.png
+worker/node_modules/
+worker/.wrangler/
+.venv/
