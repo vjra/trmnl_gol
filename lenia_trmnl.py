@@ -32,8 +32,10 @@ Webhook Image plugin accepts PNG/JPEG/BMP up to 5 MB, max 12 uploads per hour.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import math
+import re
 import time
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -777,6 +779,60 @@ def cmd_tick(args):
         print("TRMNL:", r.status_code, r.text[:200])
 
 
+FRAMES_PATH = re.compile(r"frames/[\w-][\w.-]*")    # same segment rule as the Worker's validManifest
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def keep_previous(site_url: str, out: Path, build: str, workers=16) -> str | None:
+    """
+    Copy the live build's frames into this deploy. A Pages deploy replaces the whole site, but the
+    old manifest.json stays cached for a while (Pages sends max-age=600, the Worker caches 60 s) and
+    every frame URL it points to would 404 until then. Best-effort: any failure skips the carry-over.
+    Returns the carried build, or None.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    import requests
+    base = site_url.rstrip("/")
+    try:
+        r = requests.get(f"{base}/manifest.json", params={"t": int(time.time())}, timeout=15)
+        r.raise_for_status()
+        live = r.json()
+    except (requests.RequestException, ValueError) as e:
+        print(f"keep-previous: no live manifest at {base} ({e}), skipping")
+        return None
+    path, n = (live.get("path"), live.get("n")) if isinstance(live, dict) else (None, None)
+    if not (isinstance(path, str) and FRAMES_PATH.fullmatch(path) and isinstance(n, int) and 0 < n <= 10_000):
+        print("keep-previous: live manifest has an unexpected shape, skipping")
+        return None
+    if path == f"frames/{build}":
+        return None
+    dest = out / path
+    dest.mkdir(parents=True, exist_ok=True)
+    local = threading.local()
+
+    def fetch(i):
+        name = f"{i:04d}.png"
+        if not hasattr(local, "s"):
+            local.s = requests.Session()
+        for _ in range(3):
+            try:
+                resp = local.s.get(f"{base}/{path}/{name}", timeout=15)
+            except requests.RequestException:
+                continue
+            if resp.status_code == 200 and resp.content.startswith(PNG_MAGIC):
+                (dest / name).write_bytes(resp.content)
+                return True
+            if resp.status_code == 404:
+                return False
+        return False
+
+    with ThreadPoolExecutor(workers) as ex:
+        got = sum(ex.map(fetch, range(n)))
+    print(f"keep-previous: carried {got}/{n} frames of {path}")
+    return path.split("/", 1)[1]
+
+
 def cmd_render_day(args):
     """Pre-render a loop of frames for static hosting (GitHub Pages + Redirect plugin)."""
     import datetime as dt
@@ -797,6 +853,7 @@ def cmd_render_day(args):
         frames.append(meta["species"])
         if (i + 1) % 100 == 0:
             print(f"  {i+1}/{args.n}  {meta}  {time.time()-t0:.0f}s")
+    previous = keep_previous(args.keep_previous, out, build) if args.keep_previous else None
     manifest = {
         "build": build,
         "n": args.n,
@@ -804,13 +861,15 @@ def cmd_render_day(args):
         "start": int(now.timestamp()),      # frame 0 is shown at this unix time
         "path": f"frames/{build}",
         "species": sorted(set(frames)),
+        **({"previous": previous} if previous else {}),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1))
+    b = html.escape(build, quote=True)           # served on <user>.github.io, shared by all their Pages
     (out / "index.html").write_text(
         f"<!doctype html><meta charset=utf-8><title>lenia-trmnl</title>"
-        f"<body style='font-family:monospace'><h3>build {build}</h3>"
-        f"<p>{args.n} frames, species: {', '.join(manifest['species'])}</p>"
-        f"<img src='frames/{build}/0000.png'> <img src='frames/{build}/{args.n // 2:04d}.png'>")
+        f"<body style='font-family:monospace'><h3>build {b}</h3>"
+        f"<p>{args.n} frames, species: {html.escape(', '.join(manifest['species']))}</p>"
+        f"<img src='frames/{b}/0000.png'> <img src='frames/{b}/{args.n // 2:04d}.png'>")
     print(f"wrote {args.n} frames to {fdir} and manifest.json in {time.time()-t0:.0f}s")
 
 
@@ -862,6 +921,8 @@ def main():
     rd.add_argument("--build", default=None)
     rd.add_argument("--species", default="species.json")
     rd.add_argument("--outdir", default="site")
+    rd.add_argument("--keep-previous", default=None, metavar="SITE_URL",
+                    help="also ship the frames of the build live at SITE_URL (no 404s while caches expire)")
 
     o = sub.add_parser("overview", help="science sheet of species over time")
     o.set_defaults(fn=cmd_overview)

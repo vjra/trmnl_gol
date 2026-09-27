@@ -1,6 +1,10 @@
+import contextlib
+import functools
+import http.server
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -47,3 +51,55 @@ def test_render_day_writes_frames_and_manifest(tmp_path):
     im = Image.open(frames[0])
     assert im.size == (800, 480) and im.mode == "1"
     assert frames[0].stat().st_size < 90_000   # firmware rejects large images
+
+
+@contextlib.contextmanager
+def serve(root: Path):
+    """Static HTTP server on a free localhost port, standing in for the live Pages site."""
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(root)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{srv.server_address[1]}/"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def fake_site(root: Path, build="old", n=3, path=None):
+    (root / "frames" / build).mkdir(parents=True)
+    for i in range(n):
+        Image.new("1", (8, 8), i % 2).save(root / "frames" / build / f"{i:04d}.png")
+    (root / "manifest.json").write_text(json.dumps(
+        {"build": build, "n": n, "interval": 60, "start": 0, "path": path or f"frames/{build}"}))
+
+
+def test_render_day_keeps_previous_build_frames(tmp_path):
+    live, out = tmp_path / "live", tmp_path / "site"
+    fake_site(live)
+    with serve(live) as url:
+        subprocess.run([sys.executable, str(ROOT / "lenia_trmnl.py"), "render-day", "--n", "2",
+                        "--steps", "5", "--species", str(ROOT / "species.json"), "--outdir", str(out),
+                        "--build", "new", "--keep-previous", url], check=True)
+    m = json.loads((out / "manifest.json").read_text())
+    assert m["build"] == "new" and m["previous"] == "old"
+    for i in range(3):
+        name = f"frames/old/{i:04d}.png"
+        assert (out / name).read_bytes() == (live / name).read_bytes()
+    assert len(list((out / "frames" / "new").glob("*.png"))) == 2
+
+
+def test_keep_previous_skips_same_build_bad_manifests_and_dead_sites(tmp_path):
+    live = tmp_path / "live"
+    fake_site(live, build="same")
+    with serve(live) as url:
+        assert L.keep_previous(url, tmp_path / "a", "same") is None          # nothing to carry
+    for bad in ("../../escape", "frames/../../escape", "/abs", "frames/a/b", "other/x"):
+        root = tmp_path / f"bad{abs(hash(bad))}"
+        fake_site(root, build="x", path=bad)
+        with serve(root) as url:
+            assert L.keep_previous(url, tmp_path / "b", "new") is None, bad
+    assert not (tmp_path / "b").exists() and not (tmp_path / "escape").exists()
+    assert L.keep_previous("http://127.0.0.1:9", tmp_path / "c", "new") is None   # nothing listening

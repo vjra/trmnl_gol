@@ -18,6 +18,10 @@ python lenia_trmnl.py render-day  -->  site/manifest.json   <----  GET manifest 
 - Quiet hours (default 23-7 Europe/Vienna) are handled in the Worker by returning a long `refresh_rate`.
 - Weekday office hours (default 10-17, Mon-Fri) get a reduced-frequency `refresh_rate` (default 1800 s)
   instead of full sleep; night quiet takes precedence if the windows ever overlap.
+- Each Pages deploy also ships the previously live build's frames (`render-day --keep-previous`): a deploy
+  replaces the whole site, but the old manifest stays cached up to 10 min and would otherwise point at 404s.
+- The Worker only answers GET/HEAD on `/` and validates the manifest; errors return a generic 502
+  (details via `npx wrangler tail`). CI actions are SHA-pinned because deploy-worker holds the Cloudflare token.
 
 ## Code map
 
